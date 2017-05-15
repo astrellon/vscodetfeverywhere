@@ -17,6 +17,10 @@
   "contributes": {
     "commands": [
       {
+          "command": "extension.tfCheckin",
+          "title": "TF Checkin"
+      },
+      {
         "command": "extension.tfCheckout",
         "title": "TF Checkout"
       },

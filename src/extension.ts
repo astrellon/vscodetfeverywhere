@@ -2,31 +2,11 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+
 let spawnCMD = require('spawn-command');
 let commandOutput = null;
 let filesystemWatcher = null;
-
-class CheckedFiles {
-    checkedFiles: object = {};
-
-    constructor() {
-
-    }
-
-    needToCheckoutFile(filename: string) {
-        return this.checkedFiles[filename] != null;
-    }
-
-    addCheckedFile(filename: string) {
-        this.checkedFiles[filename] = true;
-    }
-
-    removeCheckedFile(filename: string) {
-        delete this.checkedFiles[filename];
-    }
-}
-
-let checkedFiles = new CheckedFiles();
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -36,10 +16,6 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(commandOutput);
 
     filesystemWatcher = vscode.workspace.createFileSystemWatcher("{**/*.js,**/*.cs}");
-    filesystemWatcher.onDidChange((e) => {
-        //console.log('File changed:', e.fsPath);
-        tfCheckout(e.fsPath);
-    });
     filesystemWatcher.onDidCreate((e) => {
         vscode.window.showInformationMessage('Add to Tfs?', 'Yes', 'No')
             .then((val) => {
@@ -86,10 +62,19 @@ export function activate(context: vscode.ExtensionContext) {
     registerCommand('extension.tfUndo', () => {
         tfUndo(getCurrentFilename());
     });
+    registerCommand('extension.tfCheckin', () => {
+        getComment().then((value) => {
+            tfCheckin(value);
+        })
+    });
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {
+}
+
+function getComment() {
+    return vscode.window.showInputBox({'placeHolder': 'Comment message'});
 }
 
 function getCurrentFilename() {
@@ -97,8 +82,10 @@ function getCurrentFilename() {
 }
 
 function tfCheckout(filename: string) {
-    if (checkedFiles.needToCheckoutFile(filename)) {
-        checkedFiles.addCheckedFile(filename);
+    fs.access(filename, fs.constants.W_OK, (err) => {
+        if (!err) {
+            return;
+        }
 
         run(`tf checkout "${filename}"`, '')
             .then(() => {
@@ -107,7 +94,7 @@ function tfCheckout(filename: string) {
             .catch((reason) => {
                 vscode.window.showErrorMessage(`Failed to checkout ${filename} because ${reason}`);
             });
-    }
+    });
 }
 
 function tfDelete(filename: string) {
@@ -136,7 +123,6 @@ function tfDelete(filename: string) {
 function tfAdd(filename: string) {
     run(`tf add ${filename}`, '')
         .then(() => {
-            checkedFiles.addCheckedFile(filename);
             vscode.window.showInformationMessage(`Added file ${filename}`);
         })
         .catch((reason) => {
@@ -147,7 +133,6 @@ function tfAdd(filename: string) {
 function tfUndo(filename: string) {
     run(`tf undo ${filename}`, '')
         .then(() => {
-            checkedFiles.removeCheckedFile(filename);
             vscode.window.showInformationMessage(`Undone file ${filename}`);
         })
         .catch((reason) => {
@@ -177,6 +162,19 @@ function tfInfo(filename: string) {
     });
 }
 
+function tfStatus() {
+    run ('tf status', '', (data) => {
+        var output = data.toString();
+        var lines = output.split('\n');
+    }).then(() => { console.log('TF Status complete');});
+}
+
+function tfCheckin(comment: string) {
+    run (`tf checkin -comment:'${comment}'`, '', (data) => {
+        var lines = data.split('\n');
+        vscode.window.showInformationMessage(lines[lines.length - 1]);
+    });
+}
 
 function run(cmd: string, cwd: string, stdout: Function = null, stderr: Function = null) {
     return new Promise((accept, reject) => {
